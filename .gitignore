@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+transit_env/
+venv/
+env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+.npm
+.eslintcache
+build/
+dist/
+
+# Data files (chỉ block data json, không phải package.json)
+data/
+data/*.json
+*.csv
+*.pkl
+
+# OS
+.DS_Store
+.Rhistory
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
