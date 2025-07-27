@@ -4,11 +4,19 @@ React-based validation tool for HCMC transit data.
 
 ## Features
 
-- Upload and analyze bus route JSON data
-- Visualize routes and stops on interactive maps
-- Generate node tables for transit network analysis
-- Validate time data and route structures
-- Export CSV data for further processing
+🗺️ Route Visualization: Interactive SVG visualization of bus routes and stops
+🔄 Loop Route Detection: Automatically detects and handles circular routes
+📏 Accurate Distance Calculation: Calculates real distances along GPS paths with wraparound support
+📊 Route Statistics: Displays comprehensive route metrics including speed, distance, and travel time
+⏱️ Time-Expanded Network: Generates node tables for temporal network analysis
+✅ Data Validation: Validates time data integrity across all routes
+📥 CSV Export: Exports complete node tables for further analysis
+
+## Key Improvements
+
+Fixed Loop Route Detection: Properly identifies routes where first and last stops are identical
+Fixed Distance Calculation: Implements wraparound logic for the final segment in loop routes
+Enhanced Visualization: Different colors for start/end stops and wraparound indicators
 
 ## Development
 
