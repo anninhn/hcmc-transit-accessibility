@@ -25,6 +25,12 @@ Interactive web application for bus route analysis and node structure validation
 - 💾 **Export Functionality**: Export node tables to CSV format
 - ✅ **Data Validation**: Validate time data consistency and route structure
 
+### Key Improvements
+- Fixed Loop Route Detection: Properly identifies routes where first and last stops are identical
+Fixed 
+- Distance Calculation: Implements wraparound logic for the final segment in loop routes
+- Enhanced Visualization: Different colors for start/end stops and wraparound indicators
+
 ### Development & Deployment:
 ```
 tools/bus-route-visualizer/          # React-based validation tool

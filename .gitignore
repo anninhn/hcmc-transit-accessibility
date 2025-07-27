@@ -1,35 +1,39 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-transit_env/
-venv/
-env/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Node.js
-node_modules/
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 npm-debug.log*
-.npm
-.eslintcache
-build/
-dist/
+yarn-debug.log*
+yarn-error.log*
 
-# Data files (chỉ block data json, không phải package.json)
-data/
-data/*.json
-*.csv
-*.pkl
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
 
 # OS
 .DS_Store
-.Rhistory
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-
-# Logs
-logs/
-*.log
+# Data files
+*.json
+!package.json
+!tsconfig.json
+!package-lock.json
