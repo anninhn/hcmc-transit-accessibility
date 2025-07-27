@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, MapPin, Navigation, Calculator, Eye, Download, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Upload, MapPin, Navigation, Calculator, Eye, Download, FileSpreadsheet, AlertCircle, RotateCw } from 'lucide-react';
 
 // Type definitions
 interface BusData {
@@ -84,6 +84,14 @@ interface AnalysisResult {
   totalDistance: number;
   avgSpeed: number;
   nodes: RouteNode[];
+  isLoopRoute: boolean;
+  segmentDetails: {
+    from: string;
+    to: string;
+    distance: number;
+    pathIndices: { start: number; end: number };
+    isWraparound: boolean;
+  }[];
   stats: {
     totalStops: number;
     totalDistance: number;
@@ -157,6 +165,19 @@ const BusRouteAnalyzer: React.FC = () => {
     return R * c;
   };
 
+  // Check if route is a loop (first and last stops are the same)
+  const isLoopRoute = (stops: BusStop[]): boolean => {
+    if (stops.length < 2) return false;
+    
+    const firstStop = stops[0];
+    const lastStop = stops[stops.length - 1];
+    
+    // Check if coordinates match (with small tolerance for floating point comparison)
+    const tolerance = 0.000001;
+    return Math.abs(firstStop.Lat - lastStop.Lat) < tolerance && 
+           Math.abs(firstStop.Lng - lastStop.Lng) < tolerance;
+  };
+
   // Find nearest point on path
   const findNearestPointOnPath = (stopLat: number, stopLng: number, pathLats: number[], pathLngs: number[]) => {
     let minDistance = Infinity;
@@ -175,28 +196,83 @@ const BusRouteAnalyzer: React.FC = () => {
     return { nearestPoint, distance: minDistance, index: nearestIndex };
   };
 
-  // Calculate real distance between stops
-  const calculateRealDistance = (stop1: BusStop, stop2: BusStop, pathLats: number[], pathLngs: number[]): number => {
+  // Calculate real distance between stops (with loop route support)
+  const calculateRealDistance = (
+    stop1: BusStop, 
+    stop2: BusStop, 
+    pathLats: number[], 
+    pathLngs: number[],
+    isLoop: boolean,
+    stopIndex1: number,
+    stopIndex2: number,
+    totalStops: number
+  ): { distance: number; pathIndices: { start: number; end: number }; isWraparound: boolean } => {
     const nearest1 = findNearestPointOnPath(stop1.Lat, stop1.Lng, pathLats, pathLngs);
     const nearest2 = findNearestPointOnPath(stop2.Lat, stop2.Lng, pathLats, pathLngs);
     
-    const startIndex = Math.min(nearest1.index, nearest2.index);
-    const endIndex = Math.max(nearest1.index, nearest2.index);
-    
     let totalDistance = 0;
-    for (let i = startIndex; i < endIndex; i++) {
-      totalDistance += haversineDistance(
-        pathLats[i], pathLngs[i],
-        pathLats[i + 1], pathLngs[i + 1]
-      );
+    let isWraparound = false;
+    
+    // For loop routes, check if this is the last segment that wraps around
+    if (isLoop && stopIndex1 === totalStops - 2 && stopIndex2 === totalStops - 1) {
+      // This is the segment from second-to-last stop to last stop (which equals first stop)
+      // If nearest2.index < nearest1.index, it's a wraparound
+      if (nearest2.index < nearest1.index) {
+        isWraparound = true;
+        
+        // Calculate distance from nearest1 to end of path
+        for (let i = nearest1.index; i < pathLats.length - 1; i++) {
+          totalDistance += haversineDistance(
+            pathLats[i], pathLngs[i],
+            pathLats[i + 1], pathLngs[i + 1]
+          );
+        }
+        
+        // Calculate distance from start of path to nearest2
+        for (let i = 0; i < nearest2.index; i++) {
+          totalDistance += haversineDistance(
+            pathLats[i], pathLngs[i],
+            pathLats[i + 1], pathLngs[i + 1]
+          );
+        }
+        
+        console.log(`Loop route wraparound detected: Stop ${stopIndex1} → Stop ${stopIndex2}`);
+        console.log(`Path indices: ${nearest1.index} → end → start → ${nearest2.index}`);
+      } else {
+        // Normal calculation
+        const startIndex = Math.min(nearest1.index, nearest2.index);
+        const endIndex = Math.max(nearest1.index, nearest2.index);
+        
+        for (let i = startIndex; i < endIndex; i++) {
+          totalDistance += haversineDistance(
+            pathLats[i], pathLngs[i],
+            pathLats[i + 1], pathLngs[i + 1]
+          );
+        }
+      }
+    } else {
+      // Normal calculation for non-loop segments
+      const startIndex = Math.min(nearest1.index, nearest2.index);
+      const endIndex = Math.max(nearest1.index, nearest2.index);
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        totalDistance += haversineDistance(
+          pathLats[i], pathLngs[i],
+          pathLats[i + 1], pathLngs[i + 1]
+        );
+      }
     }
     
-    return totalDistance;
+    return {
+      distance: totalDistance,
+      pathIndices: { start: nearest1.index, end: nearest2.index },
+      isWraparound
+    };
   };
 
   // Process route variant with detailed logging
   const processRouteVariant = (routeData: RouteData, variantId: number): AnalysisResult | null => {
-    console.log(`Processing variant ${variantId} for route ${routeData.getroutebyid?.RouteId}`);
+    console.log(`\n=== Processing variant ${variantId} for route ${routeData.getroutebyid?.RouteNo} ===`);
     
     const variant = routeData.getvarsbyroute.find(v => v.RouteVarId === variantId);
     const stops = routeData.getstopsbyvar[variantId.toString()] || [];
@@ -205,6 +281,14 @@ const BusRouteAnalyzer: React.FC = () => {
     if (!variant || !stops || !paths) {
       console.warn(`Missing data for variant ${variantId}: variant=${!!variant}, stops=${stops.length}, paths=${!!paths}`);
       return null;
+    }
+
+    // Check if this is a loop route
+    const isLoop = isLoopRoute(stops);
+    console.log(`Route type: ${isLoop ? 'LOOP ROUTE' : 'Normal route'}`);
+    if (isLoop) {
+      console.log(`First stop: ${stops[0].Name} (${stops[0].Lat}, ${stops[0].Lng})`);
+      console.log(`Last stop: ${stops[stops.length-1].Name} (${stops[stops.length-1].Lat}, ${stops[stops.length-1].Lng})`);
     }
 
     // Get first timetable and trips
@@ -227,12 +311,36 @@ const BusRouteAnalyzer: React.FC = () => {
 
     // Calculate distances between consecutive stops
     const stopDistances: number[] = [];
+    const segmentDetails: any[] = [];
+    
     for (let i = 0; i < stops.length - 1; i++) {
-      const distance = calculateRealDistance(stops[i], stops[i + 1], pathLats, pathLngs);
-      stopDistances.push(distance);
+      const result = calculateRealDistance(
+        stops[i], 
+        stops[i + 1], 
+        pathLats, 
+        pathLngs, 
+        isLoop,
+        i,
+        i + 1,
+        stops.length
+      );
+      
+      stopDistances.push(result.distance);
+      segmentDetails.push({
+        from: `${stops[i].Name} (Stop ${i+1})`,
+        to: `${stops[i+1].Name} (Stop ${i+2})`,
+        distance: Math.round(result.distance),
+        pathIndices: result.pathIndices,
+        isWraparound: result.isWraparound
+      });
+      
+      if (result.isWraparound) {
+        console.log(`🔄 Wraparound segment detected: ${stops[i].Name} → ${stops[i+1].Name}`);
+      }
     }
 
     const totalDistance = stopDistances.reduce((sum, d) => sum + d, 0);
+    console.log(`Total route distance: ${Math.round(totalDistance)}m`);
 
     // Process first trip as example
     const firstTrip = trips[0];
@@ -324,6 +432,8 @@ const BusRouteAnalyzer: React.FC = () => {
       totalDistance,
       avgSpeed,
       nodes,
+      isLoopRoute: isLoop,
+      segmentDetails,
       stats: {
         totalStops: stops.length,
         totalDistance: Math.round(totalDistance),
@@ -584,9 +694,12 @@ const BusRouteAnalyzer: React.FC = () => {
             continue;
           }
 
+          // Check if this is a loop route
+          const isLoop = isLoopRoute(stops);
+
           // Get all timetables for this variant
           const timetables = routeData.gettimetablebyroute?.filter(t => t.RouteVarId === variantId) || [];
-          console.log(`  - Variant ${variantId}: ${timetables.length} timetables`);
+          console.log(`  - Variant ${variantId}: ${timetables.length} timetables, Loop: ${isLoop}`);
           
           for (const timetable of timetables) {
             const trips = routeData.gettripsbytimetable?.[timetable.TimeTableId.toString()] || [];
@@ -600,8 +713,17 @@ const BusRouteAnalyzer: React.FC = () => {
             // Calculate distances between consecutive stops (once per variant)
             const stopDistances: number[] = [];
             for (let i = 0; i < stops.length - 1; i++) {
-              const distance = calculateRealDistance(stops[i], stops[i + 1], pathLats, pathLngs);
-              stopDistances.push(distance);
+              const result = calculateRealDistance(
+                stops[i], 
+                stops[i + 1], 
+                pathLats, 
+                pathLngs, 
+                isLoop,
+                i,
+                i + 1,
+                stops.length
+              );
+              stopDistances.push(result.distance);
             }
 
             const totalDistance = stopDistances.reduce((sum, d) => sum + d, 0);
@@ -1063,171 +1185,212 @@ const BusRouteAnalyzer: React.FC = () => {
 
       {/* Results */}
       {analysisResult && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Visualization */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Eye className="text-purple-600" />
-              Route Visualization
-            </h2>
-            
-            {visualization && (
-              <div className="border border-gray-200 rounded-lg overflow-auto">
-                <div className="min-w-full inline-block">
-                  <svg width={visualization.width} height={visualization.height} className="border">
-                    {/* Background */}
-                    <rect width={visualization.width} height={visualization.height} fill="#f9fafb" />
-                    
-                    {/* Path */}
-                    <polyline
-                      points={visualization.pathPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                      fill="none"
-                      stroke="#3B82F6"
-                      strokeWidth="3"
-                      opacity="0.8"
-                    />
-                    
-                    {/* Stops */}
-                    {visualization.stopPoints.map((stop, index) => (
-                      <g key={stop.StopId}>
-                        <circle
-                          cx={stop.x}
-                          cy={stop.y}
-                          r="8"
-                          fill="#EF4444"
-                          stroke="#ffffff"
-                          strokeWidth="2"
-                        />
-                        <text
-                          x={stop.x}
-                          y={stop.y - 12}
-                          textAnchor="middle"
-                          className="text-xs font-medium fill-gray-700"
-                        >
-                          {index + 1}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                </div>
-                
-                <div className="p-4 bg-gray-50 text-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-1 bg-blue-500"></div>
-                      <span>Route Path</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                      <span>Bus Stops</span>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-gray-600">
-                    Bounds: {visualization.bounds.viewMinLat.toFixed(6)}, {visualization.bounds.viewMinLng.toFixed(6)} → {visualization.bounds.viewMaxLat.toFixed(6)}, {visualization.bounds.viewMaxLng.toFixed(6)}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Statistics */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Calculator className="text-green-600" />
-              Route Statistics
-            </h2>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Total Stops:</span>
-                <span className="font-medium">{analysisResult.stats.totalStops}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Total Distance:</span>
-                <span className="font-medium">{analysisResult.stats.totalDistance}m</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Average Speed:</span>
-                <span className="font-medium">{analysisResult.stats.avgSpeed} km/h</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Travel Time:</span>
-                <span className="font-medium">{analysisResult.stats.travelingTime} minutes</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-gray-600">Waiting Time:</span>
-                <span className="font-medium">{analysisResult.stats.totalWaitingTime} minutes</span>
+        <>
+          {/* Loop Route Indicator */}
+          {analysisResult.isLoopRoute && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+              <RotateCw className="text-amber-600" size={24} />
+              <div>
+                <h3 className="font-semibold text-amber-900">Loop Route Detected</h3>
+                <p className="text-sm text-amber-700">
+                  This route starts and ends at the same stop. Distance calculations use wraparound logic.
+                </p>
               </div>
             </div>
+          )}
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3 flex items-center gap-2">
-              <MapPin className="text-blue-600" />
-              Stop Distances
-            </h3>
-            
-            <div className="max-h-64 overflow-y-auto">
-              {analysisResult.stopDistances.map((distance, index) => (
-                <div key={index} className="flex justify-between py-1 text-sm border-b border-gray-50">
-                  <span className="text-gray-600">
-                    Stop {index + 1} → {index + 2}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Visualization */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Eye className="text-purple-600" />
+                Route Visualization
+              </h2>
+              
+              {visualization && (
+                <div className="border border-gray-200 rounded-lg overflow-auto">
+                  <div className="min-w-full inline-block">
+                    <svg width={visualization.width} height={visualization.height} className="border">
+                      {/* Background */}
+                      <rect width={visualization.width} height={visualization.height} fill="#f9fafb" />
+                      
+                      {/* Path */}
+                      <polyline
+                        points={visualization.pathPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                        fill="none"
+                        stroke="#3B82F6"
+                        strokeWidth="3"
+                        opacity="0.8"
+                      />
+                      
+                      {/* Stops */}
+                      {visualization.stopPoints.map((stop, index) => (
+                        <g key={stop.StopId}>
+                          <circle
+                            cx={stop.x}
+                            cy={stop.y}
+                            r="8"
+                            fill={index === 0 || index === visualization.stopPoints.length - 1 ? "#10B981" : "#EF4444"}
+                            stroke="#ffffff"
+                            strokeWidth="2"
+                          />
+                          <text
+                            x={stop.x}
+                            y={stop.y - 12}
+                            textAnchor="middle"
+                            className="text-xs font-medium fill-gray-700"
+                          >
+                            {index + 1}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
+                  
+                  <div className="p-4 bg-gray-50 text-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-1 bg-blue-500"></div>
+                        <span>Route Path</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span>Start/End Stop</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <span>Regular Stops</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-gray-600">
+                      Bounds: {visualization.bounds.viewMinLat.toFixed(6)}, {visualization.bounds.viewMinLng.toFixed(6)} → {visualization.bounds.viewMaxLat.toFixed(6)}, {visualization.bounds.viewMaxLng.toFixed(6)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Statistics */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Calculator className="text-green-600" />
+                Route Statistics
+              </h2>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Route Type:</span>
+                  <span className="font-medium flex items-center gap-2">
+                    {analysisResult.isLoopRoute ? (
+                      <>
+                        <RotateCw size={16} className="text-amber-600" />
+                        Loop Route
+                      </>
+                    ) : 'Normal Route'}
                   </span>
-                  <span className="font-medium">{Math.round(distance)}m</span>
                 </div>
-              ))}
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Total Stops:</span>
+                  <span className="font-medium">{analysisResult.stats.totalStops}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Total Distance:</span>
+                  <span className="font-medium">{analysisResult.stats.totalDistance}m</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Average Speed:</span>
+                  <span className="font-medium">{analysisResult.stats.avgSpeed} km/h</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-600">Travel Time:</span>
+                  <span className="font-medium">{analysisResult.stats.travelingTime} minutes</span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-600">Waiting Time:</span>
+                  <span className="font-medium">{analysisResult.stats.totalWaitingTime} minutes</span>
+                </div>
+              </div>
+
+              <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3 flex items-center gap-2">
+                <MapPin className="text-blue-600" />
+                Segment Details
+              </h3>
+              
+              <div className="max-h-64 overflow-y-auto">
+                {analysisResult.segmentDetails.map((segment, index) => (
+                  <div key={index} className={`py-2 text-sm border-b border-gray-50 ${segment.isWraparound ? 'bg-amber-50' : ''}`}>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 flex-1">
+                        {segment.from} → {segment.to}
+                      </span>
+                      {segment.isWraparound && (
+                        <RotateCw size={14} className="text-amber-600 mx-2" />
+                      )}
+                      <span className="font-medium">{segment.distance}m</span>
+                    </div>
+                    {segment.isWraparound && (
+                      <div className="text-xs text-amber-600 mt-1">
+                        Wraparound: Path {segment.pathIndices.start} → end → start → {segment.pathIndices.end}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Node Table */}
-      {analysisResult && (
-        <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            Node Table (Sample - First Trip)
-          </h2>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="border border-gray-300 px-3 py-2 text-left">NodeId</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">RouteId</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">StopId</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Timestamp</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Event</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Time</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Stop Name</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Attributes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analysisResult.nodes.map((node, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="border border-gray-300 px-3 py-2">{node.NodeId}</td>
-                    <td className="border border-gray-300 px-3 py-2">{node.RouteId}</td>
-                    <td className="border border-gray-300 px-3 py-2">{node.StopId}</td>
-                    <td className="border border-gray-300 px-3 py-2">{node.Timestamp}</td>
-                    <td className="border border-gray-300 px-3 py-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        node.Event === 'ARRIVAL' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
-                      }`}>
-                        {node.Event}
-                      </span>
-                    </td>
-                    <td className="border border-gray-300 px-3 py-2">{node.Time}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-sm">{node.StopName}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-xs font-mono">{node.Attributes}</td>
+          {/* Node Table */}
+          <div className="mt-6 bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">
+              Node Table (Sample - First Trip)
+            </h2>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border border-gray-300 px-3 py-2 text-left">NodeId</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">RouteId</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">StopId</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">Timestamp</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">Event</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">Time</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">Stop Name</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left">Attributes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {analysisResult.nodes.map((node, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border border-gray-300 px-3 py-2">{node.NodeId}</td>
+                      <td className="border border-gray-300 px-3 py-2">{node.RouteId}</td>
+                      <td className="border border-gray-300 px-3 py-2">{node.StopId}</td>
+                      <td className="border border-gray-300 px-3 py-2">{node.Timestamp}</td>
+                      <td className="border border-gray-300 px-3 py-2">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          node.Event === 'ARRIVAL' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                        }`}>
+                          {node.Event}
+                        </span>
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2">{node.Time}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm">{node.StopName}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-xs font-mono">{node.Attributes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="mt-4 text-sm text-gray-600">
+              <p>* This is a sample result for the first trip. In practice, all trips will be calculated.</p>
+              <p>* Waiting time at each stop: 30 seconds</p>
+              {analysisResult.isLoopRoute && (
+                <p className="text-amber-600">* Loop route: Last segment uses wraparound distance calculation</p>
+              )}
+            </div>
           </div>
-          
-          <div className="mt-4 text-sm text-gray-600">
-            <p>* This is a sample result for the first trip. In practice, all trips will be calculated.</p>
-            <p>* Waiting time at each stop: 30 seconds</p>
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
