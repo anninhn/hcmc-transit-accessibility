@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/hcmc-transit-accessibility/static/js/main.091c8bad.js",
+    "main.js": "/hcmc-transit-accessibility/static/js/main.a2b1c5b1.js",
     "index.html": "/hcmc-transit-accessibility/index.html",
-    "main.091c8bad.js.map": "/hcmc-transit-accessibility/static/js/main.091c8bad.js.map"
+    "main.a2b1c5b1.js.map": "/hcmc-transit-accessibility/static/js/main.a2b1c5b1.js.map"
   },
   "entrypoints": [
-    "static/js/main.091c8bad.js"
+    "static/js/main.a2b1c5b1.js"
   ]
 }
