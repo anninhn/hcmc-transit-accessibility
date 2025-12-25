@@ -3,52 +3,56 @@
 ## 🎯 Project Overview
 Analyzing spatial and temporal variation in transit accessibility to metro stations across Ho Chi Minh City using a time-expanded network approach.
 
-## 🚌 **Bus Route Analyzer & Visualizer**
+## 🚌 **Enhanced Bus Route Analyzer**
 
-**📍 [Launch Tool](https://anninhn.github.io/hcmc-transit-accessibility)**
+**🔗 [Launch Live Tool](https://anninhn.github.io/hcmc-transit-accessibility)**
 
-Interactive web application for bus route analysis and node structure validation:
+Interactive web application for comprehensive bus route analysis, network visualization, and data validation.
 
-### Tool Purpose:
-- **Route Analysis**: Upload and analyze bus route data with detailed statistics
-- **Route Visualization**: Display bus routes with stop-by-stop mapping and metrics
-- **Node Structure Inspection**: Examine generated node tables with temporal events (ARRIVAL/DEPARTURE)
-- **Data Validation**: Validate time data and route structure for accuracy
-- **Quality Assurance**: Verify correctness of route data and node generation process
+### ✨ Key Features:
 
-### Features:
-- 📁 **JSON Data Upload**: Load route data files for analysis
-- 🗺️ **Route Visualization**: Custom route mapping with stop markers and paths
-- 📊 **Route Statistics**: Calculate total stops, distance, average speed, travel time, waiting time
-- 📏 **Stop Distance Analysis**: Detailed stop-to-stop distance measurements
-- 📋 **Node Table Display**: View temporal events with NodeId, RouteId, StopId, Timestamp, Event
-- 💾 **Export Functionality**: Export node tables to CSV format
-- ✅ **Data Validation**: Validate time data consistency and route structure
+| Feature | Description |
+|---------|-------------|
+| 📁 **Multi-format Upload** | Import JSON (route data), Node CSV, and Link CSV files |
+| 🔄 **Loop Route Detection** | Automatically identifies circular bus routes with wraparound distance calculation |
+| 🗺️ **Route Visualization** | Interactive map with zoom/pan controls (648×502 aspect ratio matching buyttphcm.com.vn) |
+| 📊 **Route Statistics** | Travel time, waiting time, average speed, total distance |
+| 📋 **Node Table Viewer** | Inspect temporal events (ARRIVAL/DEPARTURE) with full details |
+| 🔍 **Data Validation** | Validate time consistency and route structure |
+| 💾 **CSV Export** | Export node tables for further analysis |
 
-### Development & Deployment:
-```
-tools/bus-route-visualizer/          # React-based validation tool
-├── src/
-│   ├── BusRouteAnalyzer.tsx        # Main analysis interface component
-│   ├── App.tsx                     # Application root
-│   └── components/                 # Reusable UI components
-├── public/                         # Static assets & HTML template
-├── package.json                    # Node.js dependencies & deployment scripts
-└── README.md                       # Tool-specific documentation
-```
+### 📑 Navigation Tabs:
+- **Overview** - Summary statistics and data status
+- **Routes** - Route-level analysis with stop counts and trip frequencies
+- **Trips** - Individual trip inspection with timing details
+- **Network** - Link connectivity and mode distribution
+- **Temporal** - Time-based filtering and analysis
+- **JSON Analysis** - Route selection, visualization, and node generation
 
-### Tool Usage:
+### 🖥️ Development & Deployment:
 ```bash
 # Local development
 cd tools/bus-route-visualizer/
 npm install
 npm start  # → http://localhost:3000
 
-# Production deployment
-npm run deploy  # → Updates live tool at GitHub Pages
+# Production deployment to GitHub Pages
+npm run deploy  # → https://anninhn.github.io/hcmc-transit-accessibility
 ```
 
-*This tool serves as a comprehensive route analysis and validation system to ensure data quality in the time-expanded network modeling process, providing detailed route metrics and temporal event verification capabilities.*
+### 📂 Tool Structure:
+```
+tools/bus-route-visualizer/
+├── src/
+│   ├── BusRouteAnalyzer.tsx    # Main analyzer component (2000+ lines)
+│   ├── App.tsx                 # Application root
+│   └── index.tsx               # Entry point
+├── public/                     # Static assets
+├── package.json                # Dependencies & scripts
+└── tsconfig.json               # TypeScript configuration
+```
+
+*This tool ensures data quality in the time-expanded network modeling process with comprehensive route metrics and temporal event verification.*
 
 ---
 
@@ -347,12 +351,16 @@ hcmc-transit-accessibility/
 - Support evidence-based transit planning decisions
 
 ---
-*Last updated: June 12, 2025 - Data preparation complete, interactive route analyzer deployed*
+*Last updated: December 25, 2025 - Enhanced Bus Route Analyzer deployed with bug fixes*
 
 **Current Status**: 
 - ✅ Node and link tables successfully generated from raw transit data
-- ✅ Interactive bus route analyzer deployed for route validation and analysis
+- ✅ Enhanced Bus Route Analyzer deployed with loop route detection and multi-format upload
+- ✅ Fixed travelingTime calculation bug (Travel Time + Waiting Time = Total Time)
+- ✅ Visualization dimensions updated to match buyttphcm.com.vn (648×502)
 - 🔄 Ready to create NetworkX MultiDiGraph from prepared data tables
 - 📋 Network analysis and accessibility calculations pending graph creation
+
+**Live Tool**: [https://anninhn.github.io/hcmc-transit-accessibility](https://anninhn.github.io/hcmc-transit-accessibility)
 
 **Next Milestone**: Complete Phase 1.1 - Network Foundation with functional MultiDiGraph ready for routing analysis.
